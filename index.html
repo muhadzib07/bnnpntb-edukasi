@@ -1,0 +1,902 @@
+<!doctype html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>BNN Edukasi</title><script src="https://unpkg.com/react@18/umd/react.production.min.js"></script><script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script><script src="https://unpkg.com/@babel/standalone/babel.min.js"></script><script src="https://cdn.tailwindcss.com"></script><script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-app-compat.js"></script><script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-auth-compat.js"></script><script src="https://www.gstatic.com/firebasejs/9.6.10/firebase-firestore-compat.js"></script><style>.animate-fade-in-out{animation:fadeInOut 5s forwards}@keyframes fadeInOut{0%{opacity:0;transform:translateY(-20px)}10%{opacity:1;transform:translateY(0)}90%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-20px)}}.hamburger-icon-svg{width:24px;height:24px}</style><script defer="defer" src="/bnnpntb-edukasi/static/js/main.bf750fbe.js"></script><link href="/bnnpntb-edukasi/static/css/main.dd9e2b78.css" rel="stylesheet"></head><body class="bg-gray-100 font-sans"><noscript>Anda perlu mengaktifkan JavaScript untuk menjalankan aplikasi ini.</noscript><div id="root"></div><script type="text/babel">const { useState, useEffect } = React;
+    const { createRoot } = ReactDOM;
+
+    // Ambil variabel global yang disediakan oleh Canvas
+    const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+    const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+    
+    // Inisialisasi Firebase secara terpusat
+    let firebaseApp;
+    try {
+      firebaseApp = firebase.initializeApp(firebaseConfig, 'primary');
+    } catch (e) {
+      if (e.code === 'app/duplicate-app') {
+        firebaseApp = firebase.app('primary');
+      } else {
+        console.error("Firebase initialization error:", e);
+      }
+    }
+    const db = firebase.firestore(firebaseApp);
+    const auth = firebase.auth(firebaseApp);
+
+    // Komponen Halaman Beranda
+    const HomePage = ({ setCurrentPage }) => (
+      <div className="p-8 text-center">
+        <h2 className="text-4xl md:text-5xl font-bold text-gray-800 mb-4">Selamat Datang di Portal Edukasi BNN</h2>
+        <p className="text-lg text-gray-600 mb-6 max-w-2xl mx-auto">
+          Membangun generasi muda yang bersih dari narkoba adalah tanggung jawab kita bersama. Mari bersama-sama edukasi diri dan keluarga.
+        </p>
+        <button
+          onClick={() => setCurrentPage('about')}
+          className="bg-green-500 text-white font-semibold py-3 px-6 rounded-full shadow-lg hover:bg-green-600 transition duration-300"
+        >
+          Pelajari Lebih Lanjut
+        </button>
+      </div>
+    );
+
+    // Komponen Halaman Tentang BNN
+    const AboutPage = () => (
+      <div className="p-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">Tentang BNN</h2>
+        <p className="text-gray-700 leading-relaxed mb-4">
+          Badan Narkotika Nasional (BNN) adalah lembaga pemerintah non-kementerian di Indonesia yang memiliki tugas utama untuk mencegah dan memberantas penyalahgunaan serta peredaran gelap narkotika, psikotropika, prekursor, dan bahan adiktif lainnya.
+        </p>
+        <p className="text-gray-700 leading-relaxed">
+          BNN didirikan berdasarkan Undang-Undang Nomor 35 Tahun 2009 tentang Narkotika. BNN berkomitmen untuk mewujudkan Indonesia yang bersih dari narkoba (Bersinar).
+        </p>
+      </div>
+    );
+
+    // Komponen Halaman Bahaya Narkoba
+    const DangerPage = () => (
+      <div className="p-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-red-600 mb-4">Bahaya Narkoba</h2>
+        <p className="text-gray-700 leading-relaxed mb-4">
+          Penyalahgunaan narkoba memiliki dampak yang sangat merusak, baik secara fisik, mental, maupun sosial. Berikut adalah beberapa bahaya utamanya:
+        </p>
+        <ul className="list-disc list-inside space-y-2 text-gray-700">
+          <li>Kerusakan fungsi otak dan organ tubuh lainnya.</li>
+          <li>Gangguan kesehatan mental seperti depresi, kecemasan, dan psikosis.</li>
+          <li>Penurunan produktivitas dan prestasi akademik.</li>
+          <li>Masalah hukum dan kriminalitas.</li>
+          <li>Kerusakan hubungan sosial dan keluarga.</li>
+        </ul>
+      </div>
+    );
+
+    // Komponen Halaman Rehabilitasi
+    const RehabilitationPage = () => (
+      <div className="p-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-blue-600 mb-4">Rehabilitasi Narkoba</h2>
+        <p className="text-gray-700 leading-relaxed mb-4">
+          Rehabilitasi adalah jalan terbaik untuk pulih dari kecanduan narkoba. BNN menyediakan layanan rehabilitasi untuk membantu pecandu kembali ke kehidupan normal.
+        </p>
+        <p className="text-gray-700 leading-relaxed">
+          Proses rehabilitasi meliputi detoksifikasi, terapi fisik dan psikologis, serta pembinaan spiritual dan sosial. Jika Anda atau orang terdekat membutuhkan bantuan, jangan ragu untuk menghubungi pusat rehabilitasi BNN terdekat.
+        </p>
+      </div>
+    );
+
+    // Komponen Halaman Berita & Materi
+    const NewsPage = ({ userId, isAuthReady, showMessage }) => {
+      const [contentList, setContentList] = useState([]);
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [formInput, setFormInput] = useState({ title: '', content: '', type: 'berita' });
+      const [isDataLoading, setIsDataLoading] = useState(true);
+
+      useEffect(() => {
+        if (!isAuthReady) return;
+        
+        const contentCollectionPath = `artifacts/${appId}/public/data/content`;
+        const q = db.collection(contentCollectionPath).orderBy('timestamp', 'desc');
+
+        setIsDataLoading(true);
+
+        const unsubscribe = q.onSnapshot((querySnapshot) => {
+          const fetchedContent = [];
+          querySnapshot.forEach((doc) => {
+            fetchedContent.push({ id: doc.id, ...doc.data() });
+          });
+          setContentList(fetchedContent);
+          setIsDataLoading(false);
+        }, (error) => {
+          console.error("Gagal mendengarkan data: ", error);
+          setIsDataLoading(false);
+          showMessage("Gagal memuat konten. Silakan coba lagi.", "red");
+        });
+
+        return () => unsubscribe();
+      }, [isAuthReady]);
+
+      const handleNewsInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormInput(prev => ({ ...prev, [name]: value }));
+      };
+
+      const handleNewsSubmit = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        
+        try {
+            const contentCollectionPath = `artifacts/${appId}/public/data/content`;
+            await db.collection(contentCollectionPath).add({
+                ...formInput,
+                userId: userId,
+                timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+            });
+            setFormInput({ title: '', content: '', type: 'berita' });
+            showMessage("Konten berhasil ditambahkan!", "green");
+        } catch (e) {
+            console.error("Error menambahkan dokumen: ", e);
+            showMessage("Gagal menambahkan konten. Silakan coba lagi.", "red");
+        } finally {
+            setIsSubmitting(false);
+        }
+      };
+
+      return (
+        <div className="p-8">
+          <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-4">Berita & Materi Edukasi</h2>
+          <p className="text-gray-700 leading-relaxed mb-6">
+            Informasi terbaru seputar BNN dan materi edukasi untuk pencegahan narkoba.
+          </p>
+          <h3 className="text-2xl font-semibold mb-4 text-gray-800">Daftar Konten</h3>
+          {isDataLoading ? (
+            <p className="text-center text-gray-500">Memuat konten...</p>
+          ) : (
+            <div className="space-y-6">
+              {contentList.length > 0 ? (
+                contentList.map((item) => (
+                  <div key={item.id} className="bg-white p-6 rounded-lg shadow-lg">
+                    <span className={`inline-block px-2 py-1 text-xs font-semibold rounded-full mb-2 ${item.type === 'berita' ? 'bg-blue-200 text-blue-800' : 'bg-green-200 text-green-800'}`}>
+                      {item.type.charAt(0).toUpperCase() + item.type.slice(1)}
+                    </span>
+                    <h3 className="text-xl font-bold text-gray-800 mb-2">{item.title}</h3>
+                    <p className="text-gray-600 leading-relaxed mb-2">{item.content}</p>
+                    <p className="text-sm text-gray-500">
+                      Ditambahkan oleh user: {item.userId?.substring(0, 8)}... pada {(item.timestamp?.toDate() || new Date()).toLocaleString()}
+                    </p>
+                  </div>
+                ))
+              ) : (
+                <p className="text-center text-gray-500">Belum ada konten yang ditambahkan.</p>
+              )}
+            </div>
+          )}
+        </div>
+      );
+    };
+
+    // Komponen Daftar Kuis
+    const QuizPage = ({ quizzes, setCurrentPage, setActiveQuiz }) => (
+      <div className="p-8">
+        <h2 className="text-3xl md:text-4xl font-bold text-purple-600 mb-6">Pilih Kuis</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {quizzes.length > 0 ? (
+            quizzes.map(quiz => (
+              <div key={quiz.id} className="bg-white p-6 rounded-lg shadow-lg flex flex-col">
+                <h3 className="text-xl font-bold text-gray-800 mb-2">{quiz.title}</h3>
+                <p className="text-gray-600 flex-grow mb-4">{quiz.description}</p>
+                <button
+                  onClick={() => {
+                    setActiveQuiz({ 
+                      ...quiz, 
+                      questions: quiz.questions.map(q => ({
+                        ...q,
+                        // Pastikan parsing aman
+                        answers: Array.isArray(q.answers) ? q.answers : JSON.parse(q.answers)
+                      })) 
+                    });
+                    setCurrentPage('activeQuiz');
+                  }}
+                  className="mt-auto w-full bg-purple-500 text-white font-semibold py-2 px-4 rounded-md hover:bg-purple-600 transition duration-300"
+                >
+                  Mulai Kuis
+                </button>
+              </div>
+            ))
+          ) : (
+            <p className="text-center text-gray-500 col-span-3">Belum ada kuis yang tersedia.</p>
+          )}
+        </div>
+      </div>
+    );
+
+    // Komponen Kuis Aktif
+    const ActiveQuizPage = ({ activeQuiz, handleSubmit }) => {
+      const [selectedAnswers, setSelectedAnswers] = useState({});
+      const [showResult, setShowResult] = useState(false);
+      const [correctCount, setCorrectCount] = useState(0);
+
+      const handleAnswerSelect = (questionIndex, answerIndex) => {
+        setSelectedAnswers(prev => ({
+          ...prev,
+          [questionIndex]: answerIndex
+        }));
+      };
+
+      const onSubmit = () => {
+        let count = 0;
+        activeQuiz.questions.forEach((q, index) => {
+          if (selectedAnswers[index] === q.correctAnswer) {
+            count++;
+          }
+        });
+        setCorrectCount(count);
+        setShowResult(true);
+        handleSubmit(count);
+      };
+
+      if (!activeQuiz) {
+        return <div className="p-8 text-center text-red-500">Kuis tidak ditemukan.</div>;
+      }
+
+      return (
+        <div className="p-8">
+          <h2 className="text-3xl font-bold text-purple-600 mb-4">{activeQuiz.title}</h2>
+          <p className="text-gray-700 leading-relaxed mb-6">{activeQuiz.description}</p>
+          <div className="space-y-8">
+            {activeQuiz.questions.map((q, qIndex) => (
+              <div key={qIndex} className="bg-gray-50 p-6 rounded-lg shadow-sm">
+                <p className="text-lg font-semibold text-gray-800 mb-4">{qIndex + 1}. {q.question}</p>
+                <div className="space-y-3">
+                  {q.answers.map((answer, aIndex) => (
+                    <button
+                      key={aIndex}
+                      onClick={() => handleAnswerSelect(qIndex, aIndex)}
+                      disabled={showResult}
+                      className={`w-full text-left p-3 rounded-md transition duration-300 border-2
+                        ${showResult
+                          ? (aIndex === q.correctAnswer
+                              ? 'bg-green-200 border-green-500 text-green-800'
+                              : (selectedAnswers[qIndex] === aIndex
+                                  ? 'bg-red-200 border-red-500 text-red-800'
+                                  : 'bg-white border-gray-300 hover:bg-gray-100'))
+                          : (selectedAnswers[qIndex] === aIndex
+                              ? 'bg-blue-500 text-white border-blue-600'
+                              : 'bg-white border-gray-300 hover:bg-gray-100')
+                        }
+                      `}
+                    >
+                      {answer}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-8 text-center">
+            {!showResult && (
+              <button
+                onClick={onSubmit}
+                disabled={Object.keys(selectedAnswers).length < activeQuiz.questions.length}
+                className="bg-purple-600 text-white font-semibold py-3 px-6 rounded-full shadow-lg hover:bg-purple-700 transition duration-300 disabled:bg-gray-400"
+              >
+                Selesaikan Kuis
+              </button>
+            )}
+            {showResult && (
+              <div className="mt-6 p-6 bg-purple-100 rounded-lg shadow-md">
+                <p className="text-xl font-bold text-purple-800">Hasil Anda:</p>
+                <p className="text-3xl font-bold text-purple-600 mt-2">{correctCount} / {activeQuiz.questions.length}</p>
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    };
+
+    // Komponen Halaman Sertifikat
+    const CertificatePage = ({ user, activeQuiz, score, setCurrentPage }) => {
+      const getGrade = (score, total) => {
+        if (total === 0) return 'N/A';
+        const percentage = (score / total) * 100;
+        if (percentage >= 90) return 'A';
+        if (percentage >= 80) return 'B';
+        if (percentage >= 70) return 'C';
+        return 'D';
+      };
+      
+      if (!user || !activeQuiz || score === null) {
+        return (
+          <div className="p-8 text-center">
+            <h2 className="text-3xl font-bold text-red-600 mb-4">Akses Ditolak</h2>
+            <p className="text-gray-700">Anda harus menyelesaikan kuis terlebih dahulu untuk mendapatkan sertifikat.</p>
+            <button
+              onClick={() => setCurrentPage('home')}
+              className="mt-4 bg-blue-500 text-white font-semibold py-2 px-4 rounded-full hover:bg-blue-600"
+            >
+              Kembali ke Beranda
+            </button>
+          </div>
+        );
+      }
+
+      const grade = getGrade(score, activeQuiz.questions.length);
+
+      return (
+        <div className="p-8 text-center bg-gray-100 min-h-[500px] flex flex-col items-center justify-center">
+          <div className="bg-white p-10 rounded-lg shadow-xl border-4 border-yellow-400 max-w-2xl w-full">
+            <h2 className="text-4xl font-extrabold text-gray-800 mb-2">Sertifikat Partisipasi</h2>
+            <p className="text-lg text-gray-600 mb-6">Dengan bangga diberikan kepada</p>
+            <p className="text-5xl font-black text-green-600 mb-8">{user.email || 'Pengguna Anonim'}</p>
+            <p className="text-lg text-gray-700 mb-2">telah berhasil menyelesaikan</p>
+            <p className="text-2xl font-bold text-purple-700 mb-6">{activeQuiz.title}</p>
+            <p className="text-xl text-gray-800">dengan skor:</p>
+            <p className="text-4xl font-extrabold text-blue-600 mt-2">{score} dari {activeQuiz.questions.length}</p>
+            <p className="text-xl text-gray-800">Nilai: <span className="font-extrabold text-red-600">{grade}</span></p>
+          </div>
+          <button
+            onClick={() => setCurrentPage('home')}
+            className="mt-8 bg-green-500 text-white font-semibold py-3 px-6 rounded-full hover:bg-green-600 transition duration-300"
+          >
+            Kembali ke Beranda
+          </button>
+        </div>
+      );
+    };
+
+    // Komponen Halaman Admin
+    const AdminPage = ({ quizzes, handleQuizSubmit, showMessage }) => {
+      const [quizFormInput, setQuizFormInput] = useState({
+        title: '',
+        description: '',
+        questions: [{ question: '', answers: ['', '', '', ''], correctAnswer: 0 }]
+      });
+
+      const handleQuizInputChange = (e) => {
+        const { name, value } = e.target;
+        setQuizFormInput(prev => ({ ...prev, [name]: value }));
+      };
+      
+      const handleQuestionChange = (qIndex, field, value) => {
+        const newQuestions = [...quizFormInput.questions];
+        newQuestions[qIndex][field] = value;
+        setQuizFormInput(prev => ({ ...prev, questions: newQuestions }));
+      };
+
+      const handleAnswerChange = (qIndex, aIndex, value) => {
+        const newQuestions = [...quizFormInput.questions];
+        newQuestions[qIndex].answers[aIndex] = value;
+        setQuizFormInput(prev => ({ ...prev, questions: newQuestions }));
+      };
+
+      const addQuestion = () => {
+        setQuizFormInput(prev => ({
+          ...prev,
+          questions: [...prev.questions, { question: '', answers: ['', '', '', ''], correctAnswer: 0 }]
+        }));
+      };
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await handleQuizSubmit(quizFormInput);
+          setQuizFormInput({
+            title: '',
+            description: '',
+            questions: [{ question: '', answers: ['', '', '', ''], correctAnswer: 0 }]
+          });
+          showMessage("Kuis berhasil ditambahkan!", "green");
+        } catch (error) {
+          console.error("Error menambahkan kuis: ", error);
+          showMessage("Gagal menambahkan kuis.", "red");
+        }
+      };
+
+      return (
+        <div className="p-8">
+          <h2 className="text-3xl font-bold text-gray-800 mb-6">Dashboard Admin</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            {/* Form Tambah Kuis */}
+            <div className="bg-gray-100 p-6 rounded-lg shadow-inner">
+              <h3 className="text-2xl font-semibold mb-4 text-purple-800">Tambahkan Kuis Baru</h3>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                  <label htmlFor="quizTitle" className="block text-sm font-medium text-gray-700">Judul Kuis</label>
+                  <input
+                    type="text"
+                    id="quizTitle"
+                    name="title"
+                    value={quizFormInput.title}
+                    onChange={handleQuizInputChange}
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="quizDesc" className="block text-sm font-medium text-gray-700">Deskripsi</label>
+                  <textarea
+                    id="quizDesc"
+                    name="description"
+                    rows="2"
+                    value={quizFormInput.description}
+                    onChange={handleQuizInputChange}
+                    required
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                  ></textarea>
+                </div>
+                <h4 className="text-lg font-semibold text-gray-800 mt-6">Pertanyaan Kuis</h4>
+                {quizFormInput.questions.map((q, qIndex) => (
+                  <div key={qIndex} className="bg-white p-4 rounded-md shadow-sm border border-gray-200">
+                    <label className="block text-sm font-medium text-gray-700 mb-2">Pertanyaan {qIndex + 1}</label>
+                    <input
+                      type="text"
+                      name="question"
+                      value={q.question}
+                      onChange={(e) => handleQuestionChange(qIndex, 'question', e.target.value)}
+                      required
+                      className="w-full rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500 mb-2"
+                    />
+                    <div className="space-y-1">
+                      {q.answers.map((answer, aIndex) => (
+                        <div key={aIndex} className="flex items-center space-x-2">
+                          <input
+                            type="radio"
+                            name={`correctAnswer-${qIndex}`}
+                            checked={q.correctAnswer === aIndex}
+                            onChange={() => handleQuestionChange(qIndex, 'correctAnswer', aIndex)}
+                            className="form-radio text-purple-600"
+                          />
+                          <input
+                            type="text"
+                            name={`answer-${qIndex}-${aIndex}`}
+                            value={answer}
+                            onChange={(e) => handleAnswerChange(qIndex, aIndex, e.target.value)}
+                            required
+                            className="flex-grow rounded-md border-gray-300 shadow-sm focus:border-purple-500 focus:ring-purple-500"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+                <button
+                  type="button"
+                  onClick={addQuestion}
+                  className="w-full bg-gray-300 text-gray-800 font-semibold py-2 px-4 rounded-md shadow hover:bg-gray-400 transition duration-300"
+                >
+                  Tambah Pertanyaan
+                </button>
+                <button
+                  type="submit"
+                  className="w-full bg-purple-600 text-white font-semibold py-2 px-4 rounded-md shadow-lg hover:bg-purple-700 transition duration-300"
+                >
+                  Simpan Kuis
+                </button>
+              </form>
+            </div>
+            {/* Daftar Kuis */}
+            <div className="bg-gray-100 p-6 rounded-lg shadow-inner">
+              <h3 className="text-2xl font-semibold mb-4 text-purple-800">Daftar Kuis</h3>
+              <ul className="space-y-4">
+                {quizzes.map(quiz => (
+                  <li key={quiz.id} className="bg-white p-4 rounded-md shadow-sm">
+                    <p className="font-bold text-lg">{quiz.title}</p>
+                    <p className="text-gray-600 text-sm">{quiz.description}</p>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        </div>
+      );
+    };
+
+    // Komponen Footer
+    const Footer = () => (
+      <footer className="bg-gray-800 text-white py-6 mt-8">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
+          <p>&copy; 2024 BNN Edukasi. Hak Cipta Dilindungi.</p>
+          <p className="text-sm text-gray-400 mt-2">
+            Situs ini bertujuan untuk edukasi dan pencegahan.
+          </p>
+        </div>
+      </footer>
+    );
+
+    // Komponen Navigasi
+    const Navigation = ({ currentPage, setCurrentPage, isAdmin, isLoggedIn, handleLogout }) => {
+      const [isOpen, setIsOpen] = useState(false);
+
+      const toggleMenu = () => setIsOpen(!isOpen);
+
+      const navItems = [
+        { name: 'Beranda', page: 'home', color: 'green' },
+        { name: 'Tentang BNN', page: 'about', color: 'green' },
+        { name: 'Bahaya Narkoba', page: 'danger', color: 'red' },
+        { name: 'Rehabilitasi', page: 'rehabilitation', color: 'blue' },
+        { name: 'Berita & Materi', page: 'newsAndMaterials', color: 'green' },
+        { name: 'Kuis', page: 'quiz', color: 'purple' },
+      ];
+      
+      const adminNavItem = { name: 'Admin', page: 'admin', color: 'purple' };
+
+      return (
+        <nav className="bg-white shadow-lg">
+          <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between items-center h-16">
+              <div className="flex-shrink-0 flex items-center">
+                <h1 className="text-2xl font-bold text-green-600">BNN Edukasi</h1>
+              </div>
+              <div className="md:hidden flex items-center">
+                <button onClick={toggleMenu} className="text-gray-800 hover:text-gray-600 focus:outline-none focus:text-gray-600">
+                  <svg className="hamburger-icon-svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7" />
+                  </svg>
+                </button>
+              </div>
+              <div className="hidden md:flex items-center space-x-4">
+                {navItems.map(item => (
+                  <button
+                    key={item.page}
+                    onClick={() => setCurrentPage(item.page)}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      currentPage === item.page ? `bg-${item.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+                {isAdmin && (
+                  <button
+                    onClick={() => setCurrentPage(adminNavItem.page)}
+                    className={`px-3 py-2 rounded-md text-sm font-medium ${
+                      currentPage === adminNavItem.page ? `bg-${adminNavItem.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    {adminNavItem.name}
+                  </button>
+                )}
+                {isLoggedIn ? (
+                  <button
+                    onClick={handleLogout}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-white bg-red-500 hover:bg-red-600 transition duration-300"
+                  >
+                    Logout
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => setCurrentPage('login')}
+                    className="px-3 py-2 rounded-md text-sm font-medium text-white bg-green-500 hover:bg-green-600 transition duration-300"
+                  >
+                    Login Admin
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+          {isOpen && (
+            <div className="md:hidden">
+              <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+                {navItems.map(item => (
+                  <button
+                    key={item.page}
+                    onClick={() => {
+                      setCurrentPage(item.page);
+                      setIsOpen(false);
+                    }}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
+                      currentPage === item.page ? `bg-${item.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    {item.name}
+                  </button>
+                ))}
+                {isAdmin && (
+                  <button
+                    onClick={() => {
+                      setCurrentPage(adminNavItem.page);
+                      setIsOpen(false);
+                    }}
+                    className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
+                      currentPage === adminNavItem.page ? `bg-${adminNavItem.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
+                    }`}
+                  >
+                    {adminNavItem.name}
+                  </button>
+                )}
+                {isLoggedIn ? (
+                  <button
+                    onClick={() => {
+                      handleLogout();
+                      setIsOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white bg-red-500 hover:bg-red-600"
+                  >
+                    Logout
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      setCurrentPage('login');
+                      setIsOpen(false);
+                    }}
+                    className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white bg-green-500 hover:bg-green-600"
+                  >
+                    Login Admin
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </nav>
+      );
+    };
+
+    // Komponen Halaman Login
+    const AuthPage = ({
+      user,
+      isLogin,
+      isLoggedIn,
+      email,
+      password,
+      message,
+      handleEmailChange,
+      handlePasswordChange,
+      handleLoginSubmit,
+      handleRegisterSubmit,
+      setIsLogin,
+    }) => (
+      <div className="flex flex-col items-center justify-center p-8">
+        <div className="bg-white p-8 rounded-lg shadow-lg max-w-sm w-full">
+          <h2 className="text-2xl font-bold text-gray-800 mb-6 text-center">
+            {isLogin ? 'Login Admin' : 'Daftar Admin'}
+          </h2>
+          {message && (
+            <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative mb-4" role="alert">
+              <span className="block sm:inline">{message}</span>
+            </div>
+          )}
+          <form onSubmit={isLogin ? handleLoginSubmit : handleRegisterSubmit} className="space-y-4">
+            <div>
+              <label htmlFor="email-address" className="sr-only">Alamat Email</label>
+              <input
+                id="email-address"
+                name="email"
+                type="email"
+                autoComplete="email"
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                placeholder="Alamat Email"
+                value={email}
+                onChange={handleEmailChange}
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="sr-only">Kata Sandi</label>
+              <input
+                id="password"
+                name="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-green-500 focus:border-green-500"
+                placeholder="Kata Sandi"
+                value={password}
+                onChange={handlePasswordChange}
+              />
+            </div>
+            <div>
+              <button
+                type="submit"
+                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500"
+              >
+                {isLogin ? 'Masuk' : 'Daftar'}
+              </button>
+            </div>
+          </form>
+          <div className="mt-4 text-center">
+            <button
+              onClick={() => setIsLogin(!isLogin)}
+              className="text-sm font-medium text-green-600 hover:text-green-500"
+            >
+              {isLogin ? 'Belum punya akun? Daftar' : 'Sudah punya akun? Masuk'}
+            </button>
+          </div>
+        </div>
+        {isLoggedIn && user && (
+          <div className="mt-4 p-4 bg-gray-200 rounded-lg w-full max-w-sm">
+            <p className="text-sm text-gray-700">User ID Anda: <span className="font-mono break-all">{user.uid}</span></p>
+            <p className="text-sm text-gray-700">Ini adalah ID admin yang perlu Anda gunakan.</p>
+          </div>
+        )}
+      </div>
+    );
+
+    // Komponen Utama Aplikasi
+    const App = () => {
+      const [currentPage, setCurrentPage] = useState('home');
+      const [user, setUser] = useState(null);
+      const [isAuthReady, setIsAuthReady] = useState(false);
+      const [message, setMessage] = useState('');
+      const [isLogin, setIsLogin] = useState(true);
+      const [email, setEmail] = useState('');
+      const [password, setPassword] = useState('');
+      const [quizzes, setQuizzes] = useState([]);
+      const [activeQuiz, setActiveQuiz] = useState(null);
+      const [score, setScore] = useState(null);
+
+      const showMessage = (msg, color = "blue") => {
+        setMessage(msg);
+        // Atur waktu pesan hilang otomatis
+        setTimeout(() => setMessage(''), 5000);
+      };
+
+      useEffect(() => {
+        const unsubscribe = auth.onAuthStateChanged(async (currentUser) => {
+          if (currentUser) {
+            setUser(currentUser);
+          } else {
+            setUser(null);
+          }
+          setIsAuthReady(true);
+        });
+
+        const signIn = async () => {
+          try {
+            if (initialAuthToken) {
+              await auth.signInWithCustomToken(initialAuthToken);
+            } else {
+              await auth.signInAnonymously();
+            }
+          } catch (error) {
+            console.error("Gagal melakukan otentikasi Firebase:", error);
+            showMessage("Gagal terhubung ke layanan otentikasi.", "red");
+          }
+        };
+        signIn();
+
+        return () => unsubscribe();
+      }, []);
+
+      const ADMIN_USER_ID = user?.uid; 
+      const isAdmin = user && user.uid === ADMIN_USER_ID;
+      const isLoggedIn = user !== null && !user.isAnonymous;
+
+      useEffect(() => {
+        if (!isAuthReady) return;
+        const quizzesCollectionPath = `artifacts/${appId}/public/data/quizzes`;
+        const q = db.collection(quizzesCollectionPath).orderBy('timestamp', 'desc');
+
+        const unsubscribe = q.onSnapshot((querySnapshot) => {
+          const fetchedQuizzes = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            try {
+              fetchedQuizzes.push({ 
+                id: doc.id,
+                ...data,
+                // Pastikan questions adalah array, dan answers adalah string
+                questions: data.questions.map(q => ({
+                  ...q,
+                  answers: Array.isArray(q.answers) ? q.answers : JSON.parse(q.answers)
+                }))
+              });
+            } catch (error) {
+              console.error("Error parsing quiz data:", error);
+            }
+          });
+          setQuizzes(fetchedQuizzes);
+        }, (error) => {
+          console.error("Gagal mendengarkan data kuis: ", error);
+          showMessage("Gagal memuat kuis.", "red");
+        });
+
+        return () => unsubscribe();
+      }, [isAuthReady]);
+
+      const handleQuizSubmit = async (form) => {
+        if (!form.title || !form.description || !form.questions.every(q => q.question && q.answers.every(a => a))) {
+          showMessage("Harap isi semua bidang kuis.");
+          throw new Error("Form tidak lengkap.");
+        }
+
+        const quizzesCollectionPath = `artifacts/${appId}/public/data/quizzes`;
+        return db.collection(quizzesCollectionPath).add({
+          ...form,
+          questions: form.questions.map(q => ({
+            ...q,
+            answers: JSON.stringify(q.answers)
+          })),
+          timestamp: firebase.firestore.FieldValue.serverTimestamp(),
+        });
+      };
+
+      const handleQuizSubmission = (finalScore) => {
+        setScore(finalScore);
+        setCurrentPage('certificate');
+      };
+
+      const handleLogout = async () => {
+        try {
+          await auth.signOut();
+          showMessage("Anda telah logout.");
+          setCurrentPage('home');
+        } catch (error) {
+          console.error("Gagal logout:", error);
+          showMessage("Gagal logout.", "red");
+        }
+      };
+
+      const handleLoginSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await auth.signInWithEmailAndPassword(email, password);
+          showMessage("Login berhasil!", "green");
+          setEmail('');
+          setPassword('');
+          setCurrentPage('home');
+        } catch (error) {
+          console.error("Gagal login:", error);
+          showMessage("Gagal login: Periksa email dan kata sandi Anda.", "red");
+        }
+      };
+
+      const handleRegisterSubmit = async (e) => {
+        e.preventDefault();
+        try {
+          await auth.createUserWithEmailAndPassword(email, password);
+          showMessage("Pendaftaran berhasil! Silakan login.", "green");
+          setIsLogin(true);
+          setEmail('');
+          setPassword('');
+        } catch (error) {
+          console.error("Gagal mendaftar:", error);
+          showMessage("Gagal mendaftar: " + error.message, "red");
+        }
+      };
+
+      const pages = {
+        home: <HomePage setCurrentPage={setCurrentPage} />,
+        about: <AboutPage />,
+        danger: <DangerPage />,
+        rehabilitation: <RehabilitationPage />,
+        newsAndMaterials: <NewsPage userId={user?.uid} isAuthReady={isAuthReady} showMessage={showMessage} />,
+        quiz: <QuizPage quizzes={quizzes} setCurrentPage={setCurrentPage} setActiveQuiz={setActiveQuiz} />,
+        activeQuiz: activeQuiz ? <ActiveQuizPage activeQuiz={activeQuiz} handleSubmit={handleQuizSubmission} /> : <div className="p-8 text-center text-red-500">Kuis tidak ditemukan.</div>,
+        certificate: <CertificatePage user={user} activeQuiz={activeQuiz} score={score} setCurrentPage={setCurrentPage} />,
+        login: <AuthPage
+          user={user}
+          isLogin={isLogin}
+          isLoggedIn={isLoggedIn}
+          email={email}
+          password={password}
+          message={message}
+          handleEmailChange={(e) => setEmail(e.target.value)}
+          handlePasswordChange={(e) => setPassword(e.target.value)}
+          handleLoginSubmit={handleLoginSubmit}
+          handleRegisterSubmit={handleRegisterSubmit}
+          setIsLogin={setIsLogin}
+        />,
+        admin: isAdmin ? <AdminPage quizzes={quizzes} handleQuizSubmit={handleQuizSubmit} showMessage={showMessage} /> : <div className="p-8 text-center text-red-500">Akses Ditolak</div>,
+      };
+
+      return (
+        <div className="min-h-screen bg-gray-100 font-sans">
+          <Navigation currentPage={currentPage} setCurrentPage={setCurrentPage} isAdmin={isAdmin} isLoggedIn={isLoggedIn} handleLogout={handleLogout} />
+          {message && (
+            <div className="fixed top-4 right-4 p-4 rounded-lg shadow-lg bg-blue-500 text-white animate-fade-in-out">
+              {message}
+            </div>
+          )}
+          <main className="container mx-auto py-8 px-4">
+            <div className="bg-white shadow-lg rounded-lg p-6 md:p-8">
+              {pages[currentPage]}
+            </div>
+          </main>
+          <Footer />
+        </div>
+      );
+    };
+      
+    // Bootstraping the app on window load
+    window.onload = function() {
+        const container = document.getElementById('root');
+        if (container) {
+          const root = createRoot(container);
+          root.render(<App />);
+        }
+    };</script></body></html>

@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/bnnpntb-edukasi/static/css/main.dd9e2b78.css",
+    "main.js": "/bnnpntb-edukasi/static/js/main.bf750fbe.js",
+    "static/js/453.6d6d93ca.chunk.js": "/bnnpntb-edukasi/static/js/453.6d6d93ca.chunk.js",
+    "index.html": "/bnnpntb-edukasi/index.html",
+    "main.dd9e2b78.css.map": "/bnnpntb-edukasi/static/css/main.dd9e2b78.css.map",
+    "main.bf750fbe.js.map": "/bnnpntb-edukasi/static/js/main.bf750fbe.js.map",
+    "453.6d6d93ca.chunk.js.map": "/bnnpntb-edukasi/static/js/453.6d6d93ca.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.dd9e2b78.css",
+    "static/js/main.bf750fbe.js"
+  ]
+}
