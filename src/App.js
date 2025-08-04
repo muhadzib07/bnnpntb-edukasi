@@ -1,5 +1,5 @@
 /* global __firebase_config, __app_id, __initial_auth_token */
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createRoot } from 'react-dom/client';
 import { initializeApp } from 'firebase/app';
 import { getAuth, onAuthStateChanged, signOut, createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCustomToken, signInAnonymously } from 'firebase/auth';
@@ -108,11 +108,16 @@ const RehabilitationPage = () => {
 };
 
 // Komponen Halaman Berita & Materi yang sudah diperbaiki
-const NewsAndMaterialsPage = ({ userId, showMessage }) => {
+const NewsAndMaterialsPage = ({ showMessage, isAuthReady }) => {
   const [contentList, setContentList] = useState([]);
   const [isDataLoading, setIsDataLoading] = useState(true);
 
   useEffect(() => {
+    // Hanya jalankan listener jika status otentikasi sudah siap
+    if (!isAuthReady) {
+      return;
+    }
+
     const contentCollectionPath = `artifacts/${appId}/public/data/content`;
     const q = query(collection(db, contentCollectionPath));
 
@@ -135,7 +140,7 @@ const NewsAndMaterialsPage = ({ userId, showMessage }) => {
     });
 
     return () => unsubscribe();
-  }, [showMessage]);
+  }, [isAuthReady, showMessage]);
 
   return (
     <div className="p-8">
@@ -157,7 +162,7 @@ const NewsAndMaterialsPage = ({ userId, showMessage }) => {
                 <h3 className="text-xl font-bold text-gray-800 mb-2">{item.title}</h3>
                 <p className="text-gray-600 leading-relaxed mb-2">{item.content}</p>
                 <p className="text-sm text-gray-500">
-                  Ditambahkan oleh user: {item.userId?.substring(0, 8)}... pada {new Date(item.timestamp?.seconds * 1000).toLocaleString()}
+                  Ditambahkan oleh user: {item.userId?.substring(0, 8)}... pada {item.timestamp ? new Date(item.timestamp.seconds * 1000).toLocaleString() : 'N/A'}
                 </p>
               </div>
             ))
@@ -171,7 +176,7 @@ const NewsAndMaterialsPage = ({ userId, showMessage }) => {
 };
 
 // Komponen Halaman Kuis (daftar kuis)
-const QuizSelectionPage = ({ quizzes, setCurrentPage, setActiveQuiz }) => (
+const QuizSelectionPage = ({ quizzes, setCurrentPage, setActiveQuiz, isAuthReady }) => (
     <div className="p-8">
       <h2 className="text-3xl md:text-4xl font-bold text-purple-600 mb-6">Pilih Kuis</h2>
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -192,12 +197,14 @@ const QuizSelectionPage = ({ quizzes, setCurrentPage, setActiveQuiz }) => (
             </div>
           ))
         ) : (
-          <p className="text-center text-gray-500 col-span-3">Belum ada kuis yang tersedia.</p>
+          <p className="text-center text-gray-500 col-span-3">
+             {isAuthReady ? "Belum ada kuis yang tersedia." : "Memuat kuis..."}
+          </p>
         )}
       </div>
     </div>
   );
-
+  
 // Komponen Halaman Kuis Aktif
 const QuizPage = ({ activeQuiz, handleSubmit }) => {
     const [selectedAnswers, setSelectedAnswers] = useState({});
@@ -251,8 +258,8 @@ const QuizPage = ({ activeQuiz, handleSubmit }) => {
     );
   };
   
-  // Komponen Halaman Sertifikat
-  const CertificatePage = ({ user, activeQuiz, score, setCurrentPage }) => {
+// Komponen Halaman Sertifikat
+const CertificatePage = ({ user, activeQuiz, score, setCurrentPage }) => {
     return (
       <div className="p-8 text-center bg-gray-50 rounded-lg shadow-inner">
         <h2 className="text-4xl md:text-5xl font-bold text-green-600 mb-4">Selamat!</h2>
@@ -263,14 +270,107 @@ const QuizPage = ({ activeQuiz, handleSubmit }) => {
           Sertifikat Anda telah dibuat. Anda dapat melihatnya di halaman profil.
         </p>
         <button
-          onClick={() => setCurrentPage('home')}
+          onClick={() => setCurrentPage('profile')} // Ubah navigasi ke halaman profil
           className="bg-green-500 text-white font-semibold py-3 px-6 rounded-full shadow-lg hover:bg-green-600 transition duration-300"
         >
-          Kembali ke Beranda
+          Lihat Profil
         </button>
       </div>
     );
   };
+
+// Komponen Halaman Profil Pengguna
+const ProfilePage = ({ user, isAuthReady, showMessage }) => {
+    const [quizResults, setQuizResults] = useState([]);
+    const [quizzes, setQuizzes] = useState({});
+    const [isLoading, setIsLoading] = useState(true);
+
+    useEffect(() => {
+        if (!isAuthReady || !user) {
+            return;
+        }
+
+        const fetchQuizResults = async () => {
+            const userId = user.uid;
+            const quizResultsCollectionPath = `artifacts/${appId}/users/${userId}/quiz_results`;
+            const q = query(collection(db, quizResultsCollectionPath));
+            
+            const unsubscribe = onSnapshot(q, async (querySnapshot) => {
+                const results = [];
+                const quizIds = new Set();
+                querySnapshot.forEach(doc => {
+                    const data = doc.data();
+                    results.push({ id: doc.id, ...data });
+                    quizIds.add(data.quizId);
+                });
+
+                // Ambil data kuis yang relevan
+                const newQuizzes = { ...quizzes };
+                for (const quizId of quizIds) {
+                    if (!newQuizzes[quizId]) {
+                        try {
+                            const quizDocRef = doc(db, `artifacts/${appId}/public/data/quizzes`, quizId);
+                            const quizDocSnap = await getDoc(quizDocRef);
+                            if (quizDocSnap.exists()) {
+                                newQuizzes[quizId] = quizDocSnap.data();
+                            }
+                        } catch (error) {
+                            console.error(`Gagal mengambil data kuis ID ${quizId}: `, error);
+                        }
+                    }
+                }
+                setQuizzes(newQuizzes);
+                setQuizResults(results);
+                setIsLoading(false);
+            }, (error) => {
+                console.error("Gagal mendengarkan hasil kuis: ", error);
+                showMessage("Gagal memuat riwayat kuis Anda.", "red");
+                setIsLoading(false);
+            });
+
+            return () => unsubscribe();
+        };
+
+        fetchQuizResults();
+    }, [isAuthReady, user, showMessage]);
+
+    if (!user) {
+        return <div className="p-8 text-center text-red-500">Silakan masuk untuk melihat profil Anda.</div>;
+    }
+
+    return (
+        <div className="p-8">
+            <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-6">Profil Pengguna</h2>
+            <div className="bg-gray-100 p-6 rounded-lg shadow-inner mb-8">
+                <p className="text-lg font-semibold text-gray-700">ID Pengguna: <span className="font-mono text-gray-600">{user.uid}</span></p>
+                <p className="text-lg font-semibold text-gray-700">Email: <span className="font-mono text-gray-600">{user.email || 'Anonim'}</span></p>
+            </div>
+
+            <h3 className="text-2xl font-bold text-purple-600 mb-4">Riwayat Kuis</h3>
+            {isLoading ? (
+                <p className="text-center text-gray-500">Memuat riwayat kuis...</p>
+            ) : (
+                <div className="space-y-4">
+                    {quizResults.length > 0 ? (
+                        quizResults.map((result) => (
+                            <div key={result.id} className="bg-white p-6 rounded-lg shadow-md">
+                                <h4 className="text-xl font-bold text-gray-800">
+                                    {quizzes[result.quizId]?.title || 'Kuis Tidak Ditemukan'}
+                                </h4>
+                                <p className="text-gray-600 mt-2">
+                                    Skor Anda: {result.score} / {quizzes[result.quizId]?.questions?.length || '?'}{' '}
+                                    <span className="text-sm text-gray-500">({result.timestamp ? new Date(result.timestamp.seconds * 1000).toLocaleDateString() : 'N/A'})</span>
+                                </p>
+                            </div>
+                        ))
+                    ) : (
+                        <p className="text-center text-gray-500">Anda belum menyelesaikan kuis apa pun.</p>
+                    )}
+                </div>
+            )}
+        </div>
+    );
+};
 
 // Komponen Halaman Admin
 const AdminPage = ({ isAdmin, showMessage }) => {
@@ -365,20 +465,11 @@ const AdminPage = ({ isAdmin, showMessage }) => {
             required
             className="w-full p-3 border border-gray-300 rounded-lg h-32 resize-none"
           />
-          <select
-            name="type"
-            value={formInput.type}
-            onChange={handleNewsInputChange}
-            className="w-full p-3 border border-gray-300 rounded-lg"
-          >
+          <select name="type" value={formInput.type} onChange={handleNewsInputChange} className="w-full p-3 border border-gray-300 rounded-lg" >
             <option value="berita">Berita</option>
             <option value="materi">Materi</option>
           </select>
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300 disabled:bg-gray-400"
-          >
+          <button type="submit" disabled={isSubmitting} className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300 disabled:bg-gray-400" >
             {isSubmitting ? 'Menambahkan...' : 'Tambah Konten'}
           </button>
         </form>
@@ -388,111 +479,117 @@ const AdminPage = ({ isAdmin, showMessage }) => {
       <div className="bg-white p-6 rounded-lg shadow-lg">
         <h3 className="text-2xl font-semibold mb-4 text-gray-800">Tambah Kuis Baru</h3>
         <form onSubmit={handleQuizSubmit} className="space-y-4">
-            <input
-              type="text"
-              name="title"
-              value={quizForm.title}
-              onChange={(e) => setQuizForm(prev => ({...prev, title: e.target.value}))}
-              placeholder="Judul Kuis"
-              required
-              className="w-full p-3 border border-gray-300 rounded-lg"
-            />
-            <textarea
-              name="description"
-              value={quizForm.description}
-              onChange={(e) => setQuizForm(prev => ({...prev, description: e.target.value}))}
-              placeholder="Deskripsi Kuis"
-              required
-              className="w-full p-3 border border-gray-300 rounded-lg h-24 resize-none"
-            />
-
-            {quizForm.questions.map((q, qIndex) => (
-              <div key={qIndex} className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
-                  <p className="font-semibold text-gray-700">Pertanyaan {qIndex + 1}</p>
-                  <input
-                    type="text"
-                    name="question"
-                    value={q.question}
-                    onChange={(e) => handleQuizInputChange(e, qIndex)}
-                    placeholder="Teks Pertanyaan"
-                    required
-                    className="w-full p-2 border border-gray-300 rounded-lg"
-                  />
-                  {q.options.map((option, oIndex) => (
-                    <input
-                      key={oIndex}
-                      type="text"
-                      name={`option-${qIndex}-${oIndex}`}
-                      value={option}
-                      onChange={(e) => handleQuizInputChange(e, qIndex, 'option')}
-                      placeholder={`Opsi Jawaban ${String.fromCharCode(65 + oIndex)}`}
-                      required
-                      className="w-full p-2 border border-gray-300 rounded-lg"
-                    />
-                  ))}
-                  <input
-                    type="text"
-                    name="answer"
-                    value={q.answer}
-                    onChange={(e) => handleQuizInputChange(e, qIndex)}
-                    placeholder="Jawaban Benar (harus sama dengan salah satu opsi)"
-                    required
-                    className="w-full p-2 border border-gray-300 rounded-lg bg-yellow-100"
-                  />
-              </div>
-            ))}
-
-            <button
-              type="button"
-              onClick={addQuizQuestion}
-              className="w-full bg-blue-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-300"
-            >
-              Tambah Pertanyaan
-            </button>
-
-            <button
-              type="submit"
-              disabled={isSubmitting}
-              className="w-full bg-purple-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-600 transition duration-300 disabled:bg-gray-400"
-            >
-              {isSubmitting ? 'Menambahkan...' : 'Tambah Kuis'}
-            </button>
+          <input
+            type="text"
+            name="title"
+            value={quizForm.title}
+            onChange={(e) => setQuizForm(prev => ({...prev, title: e.target.value}))}
+            placeholder="Judul Kuis"
+            required
+            className="w-full p-3 border border-gray-300 rounded-lg"
+          />
+          <textarea
+            name="description"
+            value={quizForm.description}
+            onChange={(e) => setQuizForm(prev => ({...prev, description: e.target.value}))}
+            placeholder="Deskripsi Kuis"
+            required
+            className="w-full p-3 border border-gray-300 rounded-lg h-24 resize-none"
+          />
+          {quizForm.questions.map((q, qIndex) => (
+            <div key={qIndex} className="p-4 border border-gray-200 rounded-lg bg-gray-50 space-y-3">
+              <p className="font-semibold text-gray-700">Pertanyaan {qIndex + 1}</p>
+              <input
+                type="text"
+                name="question"
+                value={q.question}
+                onChange={(e) => handleQuizInputChange(e, qIndex)}
+                placeholder="Teks Pertanyaan"
+                required
+                className="w-full p-2 border border-gray-300 rounded-lg"
+              />
+              {q.options.map((option, oIndex) => (
+                <input
+                  key={oIndex}
+                  type="text"
+                  name={`option-${qIndex}-${oIndex}`}
+                  value={option}
+                  onChange={(e) => handleQuizInputChange(e, qIndex, 'option')}
+                  placeholder={`Opsi ${oIndex + 1}`}
+                  required
+                  className="w-full p-2 border border-gray-300 rounded-lg"
+                />
+              ))}
+              <input
+                type="text"
+                name="answer"
+                value={q.answer}
+                onChange={(e) => handleQuizInputChange(e, qIndex)}
+                placeholder="Jawaban Benar"
+                required
+                className="w-full p-2 border border-gray-300 rounded-lg"
+              />
+            </div>
+          ))}
+          <button
+            type="button"
+            onClick={addQuizQuestion}
+            className="w-full py-2 px-4 bg-blue-500 text-white font-semibold rounded-lg hover:bg-blue-600 transition duration-300"
+          >
+            Tambah Pertanyaan
+          </button>
+          <button
+            type="submit"
+            disabled={isSubmitting}
+            className="w-full bg-purple-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-700 transition duration-300 disabled:bg-gray-400"
+          >
+            {isSubmitting ? 'Menambahkan...' : 'Tambah Kuis'}
+          </button>
         </form>
       </div>
     </div>
   );
 };
 
-// Komponen Halaman Login
 const LoginPage = ({ setCurrentPage, showMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleLogin = async (e) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      await signInWithEmailAndPassword(auth, email, password);
-      showMessage('Login berhasil!', 'green');
-      setCurrentPage('home');
-    } catch (error) {
-      console.error('Login gagal: ', error.message);
-      let errorMessage = 'Login gagal. Periksa email dan password.';
-      if (error.code === 'auth/invalid-credential') {
-        errorMessage = 'Email atau password salah.';
-      } else if (error.code === 'auth/user-not-found') {
-        errorMessage = 'Pengguna tidak ditemukan.';
+      e.preventDefault();
+      setIsLoading(true);
+      try {
+        // Implementasi retry dengan exponential backoff untuk API call.
+        const maxRetries = 5;
+        let retries = 0;
+        let delay = 1000; // 1 second
+        while (true) {
+          try {
+            await signInWithEmailAndPassword(auth, email, password);
+            showMessage('Berhasil masuk!', 'green');
+            break; // Berhasil, keluar dari loop
+          } catch (error) {
+            if (retries < maxRetries) {
+              retries++;
+              await new Promise(res => setTimeout(res, delay));
+              delay *= 2;
+            } else {
+              throw error; // Gagal setelah semua percobaan
+            }
+          }
+        }
+      } catch (error) {
+        console.error("Gagal masuk:", error);
+        showMessage('Email atau kata sandi salah.', 'red');
+      } finally {
+        setIsLoading(false);
       }
-      showMessage(errorMessage, 'red');
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+    };
 
   return (
     <div className="p-8 max-w-md mx-auto">
-      <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-6 text-center">Login</h2>
+      <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Masuk</h2>
       <form onSubmit={handleLogin} className="space-y-4">
         <input
           type="email"
@@ -506,68 +603,68 @@ const LoginPage = ({ setCurrentPage, showMessage }) => {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
+          placeholder="Kata Sandi"
           required
           className="w-full p-3 border border-gray-300 rounded-lg"
         />
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300 disabled:bg-gray-400"
+          disabled={isLoading}
+          className="w-full bg-blue-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-blue-600 transition duration-300 disabled:bg-gray-400"
         >
-          {isSubmitting ? 'Login...' : 'Login'}
+          {isLoading ? 'Memproses...' : 'Masuk'}
         </button>
       </form>
-      <div className="mt-4 text-center">
-        <p className="text-sm text-gray-600">
-          Belum punya akun?{' '}
-          <button
-            onClick={() => setCurrentPage('register')}
-            className="text-green-600 hover:underline font-semibold"
-          >
-            Daftar di sini.
-          </button>
-        </p>
-      </div>
+      <p className="mt-4 text-center text-gray-600">
+        Belum punya akun?{' '}
+        <button onClick={() => setCurrentPage('register')} className="text-blue-500 hover:underline">
+          Daftar sekarang
+        </button>
+      </p>
     </div>
   );
 };
 
-// --- Komponen Halaman Register (BARU) ---
 const RegisterPage = ({ setCurrentPage, showMessage }) => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (password !== confirmPassword) {
-      showMessage('Password tidak cocok.', 'red');
-      return;
-    }
-    setIsSubmitting(true);
+    setIsLoading(true);
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      showMessage('Registrasi berhasil! Silakan login.', 'green');
-      setCurrentPage('login');
-    } catch (error) {
-      console.error('Registrasi gagal: ', error.message);
-      let errorMessage = 'Registrasi gagal. Silakan coba lagi.';
-      if (error.code === 'auth/email-already-in-use') {
-        errorMessage = 'Email sudah digunakan.';
-      } else if (error.code === 'auth/weak-password') {
-        errorMessage = 'Password terlalu lemah (minimal 6 karakter).';
+      // Implementasi retry dengan exponential backoff untuk API call.
+      const maxRetries = 5;
+      let retries = 0;
+      let delay = 1000; // 1 second
+      while (true) {
+        try {
+          await createUserWithEmailAndPassword(auth, email, password);
+          showMessage('Pendaftaran berhasil! Silakan masuk.', 'green');
+          setCurrentPage('login');
+          break; // Berhasil, keluar dari loop
+        } catch (error) {
+          if (retries < maxRetries) {
+            retries++;
+            await new Promise(res => setTimeout(res, delay));
+            delay *= 2;
+          } else {
+            throw error; // Gagal setelah semua percobaan
+          }
+        }
       }
-      showMessage(errorMessage, 'red');
+    } catch (error) {
+      console.error("Gagal mendaftar:", error);
+      showMessage('Gagal mendaftar. Email sudah terdaftar atau kata sandi kurang kuat.', 'red');
     } finally {
-      setIsSubmitting(false);
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="p-8 max-w-md mx-auto">
-      <h2 className="text-3xl md:text-4xl font-bold text-gray-800 mb-6 text-center">Registrasi</h2>
+      <h2 className="text-3xl font-bold text-gray-800 mb-6 text-center">Daftar Akun Baru</h2>
       <form onSubmit={handleRegister} className="space-y-4">
         <input
           type="email"
@@ -581,291 +678,216 @@ const RegisterPage = ({ setCurrentPage, showMessage }) => {
           type="password"
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="Password"
-          required
-          className="w-full p-3 border border-gray-300 rounded-lg"
-        />
-        <input
-          type="password"
-          value={confirmPassword}
-          onChange={(e) => setConfirmPassword(e.target.value)}
-          placeholder="Konfirmasi Password"
+          placeholder="Kata Sandi (min. 6 karakter)"
           required
           className="w-full p-3 border border-gray-300 rounded-lg"
         />
         <button
           type="submit"
-          disabled={isSubmitting}
-          className="w-full bg-purple-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-purple-600 transition duration-300 disabled:bg-gray-400"
+          disabled={isLoading}
+          className="w-full bg-green-500 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-600 transition duration-300 disabled:bg-gray-400"
         >
-          {isSubmitting ? 'Mendaftar...' : 'Daftar'}
+          {isLoading ? 'Mendaftar...' : 'Daftar'}
         </button>
       </form>
-      <div className="mt-4 text-center">
-        <p className="text-sm text-gray-600">
-          Sudah punya akun?{' '}
-          <button
-            onClick={() => setCurrentPage('login')}
-            className="text-purple-600 hover:underline font-semibold"
-          >
-            Login di sini.
-          </button>
-        </p>
-      </div>
+      <p className="mt-4 text-center text-gray-600">
+        Sudah punya akun?{' '}
+        <button onClick={() => setCurrentPage('login')} className="text-blue-500 hover:underline">
+          Masuk di sini
+        </button>
+      </p>
     </div>
   );
 };
 
-
-// --- Komponen Tata Letak ---
-const Navigation = ({ currentPage, setCurrentPage, isAdmin, isLoggedIn, handleLogout }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const toggleMenu = () => setIsOpen(!isOpen);
+const Navigation = ({ currentPage, setCurrentPage, isLoggedIn, isAdmin, handleLogout }) => {
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const navItems = [
-    { name: 'Beranda', page: 'home', color: 'green' },
-    { name: 'Tentang BNN', page: 'about', color: 'green' },
-    { name: 'Bahaya Narkoba', page: 'danger', color: 'red' },
-    { name: 'Rehabilitasi', page: 'rehabilitation', color: 'blue' },
-    { name: 'Berita & Materi', page: 'newsAndMaterials', color: 'green' },
-    { name: 'Kuis', page: 'quiz', color: 'purple' },
+    { name: 'Beranda', page: 'home' },
+    { name: 'Tentang BNN', page: 'about' },
+    { name: 'Bahaya Narkoba', page: 'danger' },
+    { name: 'Rehabilitasi', page: 'rehabilitation' },
+    { name: 'Materi & Berita', page: 'news' },
+    { name: 'Kuis', page: 'quizzes' },
   ];
-  
-  const adminNavItem = { name: 'Admin', page: 'admin', color: 'purple' };
+
+  // Tambahkan item "Profil" jika pengguna sudah login
+  if (isLoggedIn) {
+      navItems.push({ name: 'Profil', page: 'profile' });
+  }
+  // Tambahkan item "Admin" jika pengguna adalah admin
+  if (isAdmin) {
+      navItems.push({ name: 'Admin', page: 'admin' });
+  }
 
   return (
-    <nav className="bg-white shadow-lg">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
-          <div className="flex-shrink-0 flex items-center">
-            <h1 className="text-2xl font-bold text-green-600">BNN Edukasi</h1>
-          </div>
-          <div className="hidden md:block">
-            <div className="ml-10 flex items-baseline space-x-4">
-              {navItems.map((item) => (
-                <button
-                  key={item.page}
-                  onClick={() => setCurrentPage(item.page)}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    currentPage === item.page ? `bg-${item.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
-                  }`}
-                >
-                  {item.name}
-                </button>
-              ))}
-              {isAdmin && (
-                <button
-                  onClick={() => setCurrentPage(adminNavItem.page)}
-                  className={`px-3 py-2 rounded-md text-sm font-medium ${
-                    currentPage === adminNavItem.page ? `bg-${adminNavItem.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
-                  }`}
-                >
-                  {adminNavItem.name}
-                </button>
-              )}
-              {isLoggedIn ? (
-                <button
-                  onClick={handleLogout}
-                  className="px-3 py-2 rounded-md text-sm font-medium text-white bg-red-500 hover:bg-red-600"
-                >
-                  Logout
-                </button>
-              ) : (
-                <button
-                  onClick={() => setCurrentPage('login')}
-                  className="px-3 py-2 rounded-md text-sm font-medium text-white bg-green-500 hover:bg-green-600"
-                >
-                  Login
-                </button>
-              )}
-            </div>
-          </div>
-          <div className="-mr-2 flex md:hidden">
-            <button
-              onClick={toggleMenu}
-              type="button"
-              className="inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
-              aria-controls="mobile-menu"
-              aria-expanded="false"
-            >
-              <span className="sr-only">Buka menu utama</span>
-              {!isOpen ? (
-                <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
-              ) : (
-                <svg className="block h-6 w-6" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              )}
-            </button>
-          </div>
+    <nav className="bg-white shadow-md">
+      <div className="container mx-auto px-4 py-4 flex justify-between items-center">
+        <div className="text-2xl font-bold text-gray-800">
+          <button onClick={() => setCurrentPage('home')}>BNN Edukasi</button>
         </div>
-      </div>
-
-      {isOpen && (
-        <div className="md:hidden" id="mobile-menu">
-          <div className="px-2 pt-2 pb-3 space-y-1 sm:px-3">
+        <div className="md:hidden">
+          <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="text-gray-500 hover:text-gray-700 focus:outline-none">
+            <svg className="h-6 w-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              {isMenuOpen ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path>
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16M4 18h16"></path>
+              )}
+            </svg>
+          </button>
+        </div>
+        <div className={`md:flex items-center space-x-6 ${isMenuOpen ? 'block' : 'hidden'} md:block absolute md:static top-16 left-0 w-full md:w-auto bg-white shadow-md md:shadow-none z-40`}>
+          <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-6 p-4 md:p-0">
             {navItems.map((item) => (
               <button
                 key={item.page}
                 onClick={() => {
                   setCurrentPage(item.page);
-                  setIsOpen(false);
+                  setIsMenuOpen(false);
                 }}
-                className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
-                  currentPage === item.page ? `bg-${item.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
-                }`}
+                className={`font-medium transition duration-300 ${currentPage === item.page ? 'text-blue-500 border-b-2 border-blue-500' : 'text-gray-600 hover:text-blue-500'}`}
               >
                 {item.name}
               </button>
             ))}
-            {isAdmin && (
-              <button
-                onClick={() => {
-                  setCurrentPage(adminNavItem.page);
-                  setIsOpen(false);
-                }}
-                className={`block w-full text-left px-3 py-2 rounded-md text-base font-medium ${
-                  currentPage === adminNavItem.page ? `bg-${adminNavItem.color}-500 text-white` : 'text-gray-800 hover:bg-gray-200'
-                }`}
-              >
-                {adminNavItem.name}
-              </button>
-            )}
+          </div>
+          <div className="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4 p-4 md:p-0 border-t md:border-t-0 mt-4 md:mt-0 pt-4 md:pt-0">
             {isLoggedIn ? (
               <button
-                onClick={() => {
-                  handleLogout();
-                  setIsOpen(false);
-                }}
-                className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white bg-red-500 hover:bg-red-600"
+                onClick={handleLogout}
+                className="bg-red-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-red-600 transition duration-300"
               >
-                Logout
+                Keluar
               </button>
             ) : (
               <button
-                onClick={() => {
-                  setCurrentPage('login');
-                  setIsOpen(false);
-                }}
-                className="block w-full text-left px-3 py-2 rounded-md text-base font-medium text-white bg-green-500 hover:bg-green-600"
+                onClick={() => setCurrentPage('login')}
+                className="bg-blue-500 text-white font-semibold py-2 px-4 rounded-lg hover:bg-blue-600 transition duration-300"
               >
-                Login
-                </button>
-              )}
+                Masuk
+              </button>
+            )}
           </div>
         </div>
-      )}
+      </div>
     </nav>
   );
 };
 
-
 const Footer = () => (
-  <footer className="bg-gray-800 text-white py-6 mt-8">
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center">
-      <p>&copy; 2024 BNN Edukasi. Hak Cipta Dilindungi.</p>
-      <p className="text-sm text-gray-400 mt-2">
-        Situs ini bertujuan untuk edukasi dan pencegahan.
-      </p>
+  <footer className="bg-gray-800 text-white py-4 mt-8">
+    <div className="container mx-auto text-center">
+      <p>&copy; {new Date().getFullYear()} BNN Edukasi. All rights reserved.</p>
     </div>
   </footer>
 );
 
-// --- Komponen Utama Aplikasi ---
 const App = () => {
   const [currentPage, setCurrentPage] = useState('home');
-  const [user, setUser] = useState(null);
-  const [isAuthReady, setIsAuthReady] = useState(false);
   const [message, setMessage] = useState('');
+  const [user, setUser] = useState(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [isAuthReady, setIsAuthReady] = useState(false);
   const [quizzes, setQuizzes] = useState([]);
   const [activeQuiz, setActiveQuiz] = useState(null);
   const [score, setScore] = useState(0);
 
-  // Fungsi untuk menampilkan pesan toast
-  const showMessage = (msg, type = 'blue') => {
+  const showMessage = useCallback((msg, type = 'info') => {
     setMessage(msg);
-    setTimeout(() => setMessage(''), 3000);
-  };
-
-  // Efek untuk inisialisasi otentikasi
-  useEffect(() => {
-    const initAuth = async () => {
-      try {
-        if (initialAuthToken) {
-          await signInWithCustomToken(auth, initialAuthToken);
-        } else {
-          await signInAnonymously(auth);
-        }
-      } catch (error) {
-        console.error("Firebase Auth Error:", error);
-      } finally {
-        setIsAuthReady(true);
-      }
-    };
-    initAuth();
+    setTimeout(() => setMessage(''), 5000);
   }, []);
 
-  // Efek untuk mendengarkan perubahan status otentikasi
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
-      setUser(currentUser);
-      setIsLoggedIn(!!currentUser && currentUser.isAnonymous === false);
-      setIsAdmin(currentUser && currentUser.uid === ADMIN_USER_ID);
+  const handleLogout = async () => {
+    await signOut(auth);
+    showMessage('Berhasil keluar.', 'green');
+    setCurrentPage('home');
+  };
+
+  const handleQuizSubmit = async (e, answers) => {
+    e.preventDefault();
+    let correctCount = 0;
+    activeQuiz.questions.forEach((q, index) => {
+      if (answers[index] === q.answer) {
+        correctCount++;
+      }
     });
+
+    setScore(correctCount);
+
+    // Simpan hasil kuis ke Firestore
+    if (user) {
+        try {
+            const userId = user.uid;
+            const quizResult = {
+                quizId: activeQuiz.id,
+                score: correctCount,
+                totalQuestions: activeQuiz.questions.length,
+                timestamp: serverTimestamp(),
+            };
+            const quizResultsCollectionPath = `artifacts/${appId}/users/${userId}/quiz_results`;
+            await addDoc(collection(db, quizResultsCollectionPath), quizResult);
+            showMessage('Hasil kuis berhasil disimpan!', 'green');
+        } catch (error) {
+            console.error('Gagal menyimpan hasil kuis:', error);
+            showMessage('Gagal menyimpan hasil kuis. Silakan coba lagi.', 'red');
+        }
+    }
+
+    setCurrentPage('certificate');
+  };
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      if (currentUser) {
+        setUser(currentUser);
+        setIsLoggedIn(true);
+        setIsAdmin(currentUser.uid === ADMIN_USER_ID);
+      } else {
+        // Sign in anonymously if no user is found
+        try {
+          if (initialAuthToken) {
+            await signInWithCustomToken(auth, initialAuthToken);
+          } else {
+            await signInAnonymously(auth);
+          }
+        } catch (error) {
+          console.error("Failed to sign in anonymously or with custom token:", error);
+        }
+        setUser(null);
+        setIsLoggedIn(false);
+        setIsAdmin(false);
+      }
+      setIsAuthReady(true);
+    });
+
     return () => unsubscribe();
   }, []);
 
-  // Efek untuk mengambil data kuis dari Firestore
   useEffect(() => {
     if (!isAuthReady) return;
 
-    const quizzesCollectionPath = `artifacts/${appId}/public/data/quizzes`;
-    const q = query(collection(db, quizzesCollectionPath));
-
+    const quizCollectionPath = `artifacts/${appId}/public/data/quizzes`;
+    const q = query(collection(db, quizCollectionPath));
+    
     const unsubscribe = onSnapshot(q, (querySnapshot) => {
       const fetchedQuizzes = [];
       querySnapshot.forEach((doc) => {
-        fetchedQuizzes.push({ id: doc.id, ...doc.data() });
+        const quizData = doc.data();
+        if (quizData && quizData.questions && quizData.questions.length > 0) {
+          fetchedQuizzes.push({ id: doc.id, ...quizData });
+        }
       });
       setQuizzes(fetchedQuizzes);
     }, (error) => {
-      console.error("Gagal mendengarkan data kuis: ", error);
-      showMessage("Gagal memuat kuis. Silakan coba lagi.", "red");
+      console.error("Failed to fetch quizzes:", error);
+      showMessage('Gagal memuat daftar kuis.', 'red');
     });
 
     return () => unsubscribe();
   }, [isAuthReady, showMessage]);
-
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-      setCurrentPage('home');
-      showMessage('Anda telah keluar.', 'blue');
-    } catch (error) {
-      console.error('Logout gagal: ', error.message);
-      showMessage('Gagal keluar. Silakan coba lagi.', 'red');
-    }
-  };
-
-  const handleQuizSubmission = (e, selectedAnswers) => {
-    e.preventDefault();
-    if (!activeQuiz) return;
-  
-    let correctCount = 0;
-    activeQuiz.questions.forEach((q, index) => {
-      const selected = selectedAnswers[index];
-      if (selected === q.answer) {
-        correctCount++;
-      }
-    });
-  
-    setScore(correctCount);
-    setCurrentPage('certificate');
-  };
 
   const renderPage = () => {
     switch (currentPage) {
@@ -877,17 +899,19 @@ const App = () => {
         return <DangerPage />;
       case 'rehabilitation':
         return <RehabilitationPage />;
-      case 'newsAndMaterials':
-        return <NewsAndMaterialsPage showMessage={showMessage} />;
-      case 'quiz':
-        return <QuizSelectionPage quizzes={quizzes} setCurrentPage={setCurrentPage} setActiveQuiz={setActiveQuiz} />;
+      case 'news':
+        return <NewsAndMaterialsPage showMessage={showMessage} isAuthReady={isAuthReady} />;
+      case 'quizzes':
+        return <QuizSelectionPage quizzes={quizzes} setCurrentPage={setCurrentPage} setActiveQuiz={setActiveQuiz} isAuthReady={isAuthReady} />;
       case 'activeQuiz':
-        return activeQuiz ? <QuizPage activeQuiz={activeQuiz} handleSubmit={handleQuizSubmission} /> : <div className="p-8 text-center text-red-500">Kuis tidak ditemukan.</div>;
+        return <QuizPage activeQuiz={activeQuiz} handleSubmit={handleQuizSubmit} />;
       case 'certificate':
         return <CertificatePage user={user} activeQuiz={activeQuiz} score={score} setCurrentPage={setCurrentPage} />;
+      case 'profile':
+        return <ProfilePage user={user} isAuthReady={isAuthReady} showMessage={showMessage} />;
       case 'login':
         return <LoginPage setCurrentPage={setCurrentPage} showMessage={showMessage} />;
-      case 'register': // Kasus baru untuk halaman register
+      case 'register':
         return <RegisterPage setCurrentPage={setCurrentPage} showMessage={showMessage} />;
       case 'admin':
         return <AdminPage isAdmin={isAdmin} showMessage={showMessage} />;
@@ -906,7 +930,7 @@ const App = () => {
         handleLogout={handleLogout}
       />
       {message && (
-        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white z-50 animate-fade-in-out ${message.includes('gagal') ? 'bg-red-500' : 'bg-blue-500'}`}>
+        <div className={`fixed top-4 right-4 p-4 rounded-lg shadow-lg text-white z-50 animate-fade-in-out ${message.includes('Gagal') ? 'bg-red-500' : 'bg-blue-500'}`}>
           {message}
         </div>
       )}
@@ -924,7 +948,5 @@ export default App;
 
 // Untuk me-render aplikasi di root element
 const container = document.getElementById('root');
-if (container) {
-  const root = createRoot(container);
-  root.render(<App />);
-}
+const root = createRoot(container);
+root.render(<App />);
